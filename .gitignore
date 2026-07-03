@@ -13,6 +13,10 @@ dist-ssr
 *.local
 .env
 
+# Firebase service account keys — never commit (full admin access)
+*firebase-adminsdk*.json
+*serviceAccount*.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -23,3 +27,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Firebase & Expo caches — never commit
+.firebase/
+.expo/

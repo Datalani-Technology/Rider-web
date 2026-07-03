@@ -8,7 +8,7 @@ const NAV = [
   { to: '/riders', label: 'Riders', icon: '🏍️' },
   { to: '/customers', label: 'Customers', icon: '👤' },
   { to: '/orders', label: 'Orders', icon: '📦' },
-  { to: '/wallet', label: 'Wallet Approvals', icon: '💳' },
+  { to: '/wallet', label: 'Driver Wallets', icon: '💳' },
   { to: '/packages', label: 'Credit Packages', icon: '🎫' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
 ];

@@ -76,8 +76,8 @@ export default function PackagesPage() {
       </div>
 
       {/* Packages table */}
-      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-x-auto">
+        <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="border-b border-gray-800 text-gray-400 text-left">
               <th className="px-4 py-3">Package</th>

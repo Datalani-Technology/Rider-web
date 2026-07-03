@@ -5,6 +5,11 @@ import type { Rider } from '../types';
 
 type FilterStatus = 'all' | 'pending' | 'approved' | 'rejected';
 
+// Migration-safe balance reads: legacy walletBalance credits count as ride points.
+const cashOf = (r: Rider) => r.cashBalance ?? 0;
+const pointsOf = (r: Rider) => r.ridePoints ?? r.walletBalance ?? 0;
+const fmtCash = (n: number) => `N$${n.toFixed(2)}`;
+
 function Badge({ status }: { status: string }) {
   const map: Record<string, string> = {
     approved: 'bg-green-500/20 text-green-400 border-green-500/30',
@@ -22,9 +27,22 @@ export default function RidersPage() {
   const [note, setNote] = useState('');
   const [processing, setProcessing] = useState(false);
 
+  // isActive lives on the users/{uid} doc, not the rider doc — track it separately
+  // so the Suspend/Activate label reflects the real state and toggles both ways.
+  const [activeMap, setActiveMap] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     return onSnapshot(collection(db, 'riders'), snap => {
       setRiders(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Rider));
+    });
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(collection(db, 'users'), snap => {
+      const map: Record<string, boolean> = {};
+      // Default to active (true) — a rider who was never suspended has no isActive:false
+      snap.docs.forEach(d => { map[d.id] = (d.data().isActive as boolean | undefined) ?? true; });
+      setActiveMap(map);
     });
   }, []);
 
@@ -50,10 +68,19 @@ export default function RidersPage() {
     setNote('');
   };
 
+  // Suspend/reactivate a rider. isActive lives on users/{uid}; also force them
+  // offline in the rider doc so a suspended rider stops receiving orders immediately.
   const suspend = async (riderId: string, isActive: boolean) => {
+    const action = isActive ? 'suspend' : 'activate';
+    if (!confirm(`Are you sure you want to ${action} this account?`)) return;
     await updateDoc(doc(db, 'users', riderId), { isActive: !isActive });
     await updateDoc(doc(db, 'riders', riderId), { isOnline: false, isAvailableForOrders: false });
   };
+
+  // Live view of the open rider so balances refresh in the modal after an adjustment.
+  const selectedLive = selectedRider
+    ? riders.find(r => r.id === selectedRider.id) ?? selectedRider
+    : null;
 
   return (
     <div className="p-6 space-y-4">
@@ -78,14 +105,15 @@ export default function RidersPage() {
         </div>
       </div>
 
-      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-x-auto">
+        <table className="w-full min-w-[900px] text-sm">
           <thead>
             <tr className="border-b border-gray-800 text-gray-400 text-left">
               <th className="px-4 py-3">Rider</th>
               <th className="px-4 py-3">Vehicle</th>
               <th className="px-4 py-3">Deliveries</th>
-              <th className="px-4 py-3">Credits</th>
+              <th className="px-4 py-3">Cash</th>
+              <th className="px-4 py-3">Points</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Online</th>
               <th className="px-4 py-3">Actions</th>
@@ -101,8 +129,13 @@ export default function RidersPage() {
                 <td className="px-4 py-3 text-gray-300 capitalize">{r.preferredVehicle}</td>
                 <td className="px-4 py-3 text-gray-300">{r.totalDeliveries}</td>
                 <td className="px-4 py-3">
-                  <span className={r.walletBalance === 0 ? 'text-red-400 font-semibold' : 'text-green-400'}>
-                    {r.walletBalance ?? 0}
+                  <span className={cashOf(r) < 0 ? 'text-red-400 font-semibold' : 'text-gray-200'}>
+                    {fmtCash(cashOf(r))}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={pointsOf(r) > 0 ? 'text-green-400' : 'text-gray-500'}>
+                    {pointsOf(r)}
                   </span>
                 </td>
                 <td className="px-4 py-3"><Badge status={r.approvalStatus} /></td>
@@ -114,15 +147,17 @@ export default function RidersPage() {
                     className="text-xs text-blue-400 hover:text-blue-300 underline">
                     Review
                   </button>
-                  <button onClick={() => suspend(r.id, r.isActive)}
-                    className={`text-xs underline ${r.isActive ? 'text-red-400 hover:text-red-300' : 'text-green-400 hover:text-green-300'}`}>
-                    {r.isActive ? 'Suspend' : 'Activate'}
-                  </button>
+                  {r.approvalStatus === 'approved' && (
+                    <button onClick={() => suspend(r.id, activeMap[r.id] ?? true)}
+                      className={`text-xs underline ${(activeMap[r.id] ?? true) ? 'text-red-400 hover:text-red-300' : 'text-green-400 hover:text-green-300'}`}>
+                      {(activeMap[r.id] ?? true) ? 'Suspend' : 'Activate'}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="text-center text-gray-500 py-8">No riders found</td></tr>
+              <tr><td colSpan={8} className="text-center text-gray-500 py-8">No riders found</td></tr>
             )}
           </tbody>
         </table>
@@ -146,8 +181,12 @@ export default function RidersPage() {
                   <div className="text-white capitalize mt-1">{selectedRider.preferredVehicle}</div>
                 </div>
                 <div className="bg-gray-800 rounded-lg p-3">
-                  <div className="text-gray-400">Wallet Balance</div>
-                  <div className={`mt-1 font-semibold ${selectedRider.walletBalance === 0 ? 'text-red-400' : 'text-green-400'}`}>{selectedRider.walletBalance ?? 0} credits</div>
+                  <div className="text-gray-400">Cash Wallet</div>
+                  <div className={`mt-1 font-semibold ${selectedLive && cashOf(selectedLive) < 0 ? 'text-red-400' : 'text-green-400'}`}>{fmtCash(cashOf(selectedLive ?? selectedRider))}</div>
+                </div>
+                <div className="bg-gray-800 rounded-lg p-3">
+                  <div className="text-gray-400">Ride Points</div>
+                  <div className="text-white mt-1 font-semibold">{pointsOf(selectedLive ?? selectedRider)} points</div>
                 </div>
                 <div className="bg-gray-800 rounded-lg p-3">
                   <div className="text-gray-400">Rating</div>
@@ -207,7 +246,7 @@ export default function RidersPage() {
                     className="flex-1 bg-green-500/20 border border-green-500/30 text-green-400 hover:bg-green-500/30 rounded-lg py-2 text-sm font-medium disabled:opacity-30 transition-colors">
                     Approve
                   </button>
-                  <button onClick={() => setApproval(selectedRider.id, 'rejected', note)} disabled={selectedRider.approvalStatus === 'rejected' || processing}
+                  <button onClick={() => setApproval(selectedRider.id, 'rejected', note)} disabled={selectedRider.approvalStatus === 'approved' || selectedRider.approvalStatus === 'rejected' || processing}
                     className="flex-1 bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 rounded-lg py-2 text-sm font-medium disabled:opacity-30 transition-colors">
                     Reject
                   </button>

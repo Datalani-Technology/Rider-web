@@ -5,6 +5,8 @@ import type { AppConfig } from '../types';
 
 const defaultConfig: AppConfig = {
   maintenanceMode: false,
+  commissionRate: 0.15,
+  creditLimit: 0,
   paymentEwallet: '',
   paymentEwalletName: 'Datalani Technology CC',
   paymentBankName: '',
@@ -17,19 +19,23 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // NOTE: the mobile app reads config from appConfig/settings — this MUST match, or
+  // commission, credit limit and maintenance mode won't take effect in the app.
   useEffect(() => {
-    getDoc(doc(db, 'appConfig', 'main')).then(snap => {
+    getDoc(doc(db, 'appConfig', 'settings')).then(snap => {
       if (snap.exists()) setConfig(prev => ({ ...prev, ...snap.data() }));
     });
   }, []);
 
   const save = async () => {
     setSaving(true);
-    await setDoc(doc(db, 'appConfig', 'main'), { ...config, updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(doc(db, 'appConfig', 'settings'), { ...config, updatedAt: serverTimestamp() }, { merge: true });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  const commissionPercent = Math.round((config.commissionRate ?? 0.15) * 100);
 
   return (
     <div className="p-6 space-y-6 max-w-2xl">
@@ -52,6 +58,38 @@ export default function SettingsPage() {
           >
             <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${config.maintenanceMode ? 'translate-x-6' : 'translate-x-1'}`} />
           </button>
+        </div>
+      </div>
+
+      {/* Commission & wallet */}
+      <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-4">
+        <h2 className="text-white font-semibold">Commission &amp; Wallet</h2>
+        <p className="text-gray-400 text-xs">
+          The platform commission is charged from a rider&apos;s cash wallet after each completed
+          ride — unless they use a ride point (free ride). The credit limit is the lowest cash
+          balance a rider may go online at (may be negative to extend credit).
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">Commission (% of fare)</label>
+            <div className="relative">
+              <input
+                type="number" min={0} max={100} value={commissionPercent}
+                onChange={e => setConfig(p => ({ ...p, commissionRate: (parseFloat(e.target.value) || 0) / 100 }))}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-8 text-white text-sm focus:outline-none focus:border-red-500"
+              />
+              <span className="absolute right-3 top-2 text-gray-500 text-sm">%</span>
+            </div>
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs block mb-1">Credit limit (N$)</label>
+            <input
+              type="number" value={config.creditLimit ?? 0}
+              onChange={e => setConfig(p => ({ ...p, creditLimit: parseFloat(e.target.value) || 0 }))}
+              placeholder="e.g. 0 or -50"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500"
+            />
+          </div>
         </div>
       </div>
 
