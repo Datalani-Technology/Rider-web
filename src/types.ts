@@ -1,4 +1,4 @@
-export type UserRole = 'customer' | 'rider' | 'admin';
+export type UserRole = 'customer' | 'rider' | 'admin' | 'reviewer' | 'support';
 export type RiderApprovalStatus = 'pending' | 'approved' | 'rejected';
 export type OrderStatus = 'pending' | 'accepted' | 'picked_up' | 'in_transit' | 'delivered' | 'cancelled' | 'failed';
 export type TopupStatus = 'pending' | 'approved' | 'rejected';
@@ -21,11 +21,12 @@ export interface BaseUser {
 }
 
 export interface Rider extends BaseUser {
-  nationalId: string;
+  // National ID removed — Namibian driver's licence already contains the ID number
   licenseNumber: string;
   preferredVehicle: DeliveryVehicle;
   approvalStatus: RiderApprovalStatus;
   approvalNote?: string;
+  approvedAt?: Date;
   isOnline: boolean;
   isAvailableForOrders: boolean;
   isVerified: boolean;
@@ -40,6 +41,8 @@ export interface Rider extends BaseUser {
   /** @deprecated Legacy credits; superseded by ridePoints + cashBalance. */
   walletBalance: number;
   totalCreditsPurchased: number;
+  licenseFrontUrl?: string;   // Driver's licence front (contains ID number)
+  licenseBackUrl?: string;    // Driver's licence back (vehicle categories)
   vehicleRegDocUrl?: string;
   roadworthyDocUrl?: string;
   licenseDiscDocUrl?: string;
@@ -97,7 +100,9 @@ export interface AppConfig {
   commissionRate?: number;
   /** Lowest cash balance (N$) a rider may go online at; may be negative. */
   creditLimit?: number;
-  paymentEwallet?: string;
+  adminEmail?: string; // receives pending-approval and wallet-request email alerts
+  // Standardised field names — must match what the Dash app reads (appConfig/settings)
+  paymentEwalletNumber?: string;
   paymentEwalletName?: string;
   paymentBankName?: string;
   paymentAccountNumber?: string;
